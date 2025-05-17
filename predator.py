@@ -1,16 +1,15 @@
 from shared import Agent, MAX_HUNGER, MAX_SPEED
 import math
 
-class Prey(Agent):
-    def update(self, foods, predators):
+class Predator(Agent):
+    def update(self, preys):
         if not self.alive:
             return
 
-        visible = foods + predators
-        inputs = self.get_inputs(visible)
+        inputs = self.get_inputs(preys)
         output = self.net.activate(inputs)
 
-        turn = (output[0] * 2 - 1) * 15
+        turn = (output[0] * 2 - 1) * 20
         speed = output[1] * MAX_SPEED
 
         self.direction = (self.direction + turn) % 360
@@ -29,8 +28,9 @@ class Prey(Agent):
             self.genome.fitness += 20  # Reward for reproduction
             self.hunger = MAX_HUNGER * 0.8  # Set hunger to 80% after reproduction
 
-        for food in foods:
-            if food.alive and math.hypot(food.x - self.x, food.y - self.y) < 10:
-                self.hunger = min(MAX_HUNGER, self.hunger + 30)
-                food.alive = False
+        for prey in preys:
+            if prey.alive and math.hypot(prey.x - self.x, prey.y - self.y) < 15:
+                prey.alive = False
+                self.hunger = min(MAX_HUNGER, self.hunger + 50)
+                self.genome.fitness += 50
                 break
