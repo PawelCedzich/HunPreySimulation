@@ -2,11 +2,14 @@ from shared import Agent, MAX_STAMINA, MAX_SPEED
 import math
 
 class Predator(Agent):
-    VIEW_ANGLE = 60  # pole widzenia dla Predator (możesz zmieniać w przyszłości)
+    VIEW_ANGLE = 120  # przykładowa wartość, możesz zmienić wg potrzeb
+    VIEW_DISTANCE = 100  # przykładowy zasięg widzenia dla Predator
 
     def __init__(self, genome, net):
         super().__init__(genome, net)
+        self.view_distance = self.VIEW_DISTANCE  # indywidualny zasięg widzenia
         self.reproduction_cooldown = 0
+        self.eat_cooldown = 0  # cooldown na jedzenie
 
     def update(self, preys):
         if not self.alive:
@@ -14,6 +17,8 @@ class Predator(Agent):
 
         if self.reproduction_cooldown > 0:
             self.reproduction_cooldown -= 1
+        if self.eat_cooldown > 0:
+            self.eat_cooldown -= 1
 
         inputs = self.get_inputs(preys)
         output = self.net.activate(inputs)
@@ -33,20 +38,25 @@ class Predator(Agent):
         prev_x, prev_y = self.x, self.y
         self.move()
         distance_moved = math.hypot(self.x - prev_x, self.y - prev_y)
-        self.genome.fitness += distance_moved * 0.01  # Small reward for movement
+        self.genome.fitness += distance_moved * 0.001  # Small reward for movement
 
         self.decrease_stamina()
 
         # Check for reproduction
         if self.stamina > 90 and self.reproduction_cooldown == 0:
             self.genome.fitness += 20  # Reward for reproduction
-            self.stamina = MAX_STAMINA * 0.8  
+            self.stamina -= 40
             self.reproduction_cooldown = 30
             return "reproduce"
 
         for prey in preys:
-            if prey.alive and math.hypot(prey.x - self.x, prey.y - self.y) < 15:
+            if (
+                self.eat_cooldown == 0
+                and prey.alive
+                and math.hypot(prey.x - self.x, prey.y - self.y) < 15
+            ):
                 prey.alive = False
-                self.stamina = min(MAX_STAMINA, self.stamina + 50)
-                self.genome.fitness += 50
+                self.stamina = min(MAX_STAMINA, self.stamina + 35)
+                self.genome.fitness += 20
+                self.eat_cooldown = 5  # blokada na 5 ticków
                 break

@@ -2,7 +2,7 @@ import random
 import math
 
 # Shared constants
-WIDTH = 1200
+WIDTH = 1700
 HEIGHT = 1000
 MAX_STAMINA = 100
 MAX_SPEED = 5
@@ -35,7 +35,7 @@ class Agent:
         self.y = max(0, min(HEIGHT, self.y))
 
     def decrease_stamina(self):
-        self.stamina -= 0.01 + 0.01 * abs(self.speed)
+        self.stamina -= 0.01 + 0.025 * abs(self.speed)
         if self.stamina > MAX_STAMINA:
             self.stamina = MAX_STAMINA
         if self.stamina <= 0:
