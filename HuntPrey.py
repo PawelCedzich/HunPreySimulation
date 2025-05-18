@@ -12,15 +12,16 @@ import matplotlib.pyplot as plt
 # Parametry
 FPS = 30
 NUM_STEPS_PER_GEN = 500
+
 MAX_PREY = 200  # Updated from 200 to 100
 MAX_PREDATORS = 170  # Updated from 150 to 100
 RAY_UPDATE_FREQ = 5  # update ray tracing co 5 ticków
 
 NUM_RAYS = 8
-FIELD_OF_VIEW = 360
-RAY_ANGLE = FIELD_OF_VIEW / NUM_RAYS
+RAY_ANGLE = 360 / NUM_RAYS  # domyślny kąt, ale nie używaj FIELD_OF_VIEW tutaj
 MAX_SPEED = 5
 MAX_HUNGER = 100
+MAX_TURN_ANGLE = 15  # stopni na tick
 
 class Agent:
     def __init__(self, genome, net):
@@ -35,6 +36,7 @@ class Agent:
         self.inputs_cache = None  # cache sensorycznych danych
         self.tick_since_last_ray = 0
         self.view_distance = 100  # Default view distance for agents
+        self.view_angle = getattr(self, "VIEW_ANGLE", 360)  # domyślnie 360, nadpisywane w Prey/Predator
 
     def move(self):
         rad = math.radians(self.direction)
@@ -52,9 +54,13 @@ class Agent:
         # aktualizuj sensoryczne dane tylko co RAY_UPDATE_FREQ kroków
         if self.tick_since_last_ray >= RAY_UPDATE_FREQ or self.inputs_cache is None:
             self.inputs_cache = []
+            # --- Używaj indywidualnego pola widzenia ---
+            local_fov = getattr(self, "VIEW_ANGLE", 360)
+            local_ray_angle = local_fov / NUM_RAYS
+            start_angle = self.direction - (local_fov / 2)
             for i in range(NUM_RAYS):
-                ray_dir = (self.direction + i * RAY_ANGLE) % 360
-                dist, obj_type = self.cast_ray(ray_dir, objects)
+                ray_dir = (start_angle + i * local_ray_angle) % 360
+                dist, obj_type = self.cast_ray(ray_dir, objects, local_fov)
                 self.inputs_cache.append(dist / WIDTH)
                 self.inputs_cache.append(obj_type)
             self.inputs_cache.append(self.hunger / MAX_HUNGER)
@@ -64,7 +70,7 @@ class Agent:
 
         return self.inputs_cache
 
-    def cast_ray(self, ray_dir, objects):
+    def cast_ray(self, ray_dir, objects, fov):
         min_dist = WIDTH
         obj_type = 0
         rad = math.radians(ray_dir)
@@ -74,14 +80,16 @@ class Agent:
             dx = obj.x - self.x
             dy = obj.y - self.y
             angle_to_obj = math.degrees(math.atan2(dy, dx)) % 360
+            # --- MODYFIKACJA: angle_diff zależne od fov ---
             angle_diff = abs((ray_dir - angle_to_obj + 180) % 360 - 180)
-            if angle_diff < RAY_ANGLE / 2:
+            if angle_diff < (fov / NUM_RAYS) / 2:
                 dist = math.hypot(dx, dy)
                 if dist < min_dist:
                     min_dist = dist
                     obj_type = 1
         return min_dist, obj_type
 
+    
 def init_agents(genomes, config, agent_class, max_agents):
     agents = []
     for i, (gid, genome) in enumerate(genomes):
@@ -91,22 +99,6 @@ def init_agents(genomes, config, agent_class, max_agents):
         net = neat.nn.FeedForwardNetwork.create(genome, config)
         agents.append(agent_class(genome, net))
     return agents
-
-# Global variables for population tracking
-population_data = {"preys": [], "predators": []}
-
-def update_population_chart():
-    plt.clf()
-    plt.plot(population_data["preys"], label="Preys")
-    plt.plot(population_data["predators"], label="Predators")
-    plt.xlabel("Generation")
-    plt.ylabel("Population")
-    plt.title("Final Population Per Generation")
-    plt.legend()
-    plt.ylim(0, 200)  # Fixed scale for population
-    plt.xticks(range(len(population_data["preys"])))  # Generations displayed every 1
-    plt.draw()  # Draw the updated plot
-    plt.pause(0.01)  # Pause to allow real-time updates
 
 def run_live_training(config_prey, config_predator, generations=30):
     pygame.init()
@@ -128,7 +120,10 @@ def run_live_training(config_prey, config_predator, generations=30):
 
     foods = [Food(WIDTH, HEIGHT) for _ in range(80)]  # Pass dimensions to Food
 
-    plt.ion()  # Enable interactive mode for matplotlib
+    # --- ZAPAMIĘTAJ CAŁĄ GENERACJĘ NA START ---
+    all_preys = preys[:]
+    all_predators = predators[:]
+
     while gen < generations:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -143,18 +138,46 @@ def run_live_training(config_prey, config_predator, generations=30):
                 pygame.draw.circle(screen, (0, 255, 0), (int(food.x), int(food.y)), 4)
 
         # UPDATE i RYSOWANIE PREY
+        new_preys = []
         for prey in preys:
             if prey.alive:
-                prey.update(foods, predators)
+                result = prey.update(foods, predators)
                 pygame.draw.circle(screen, (0, 0, 255), (int(prey.x), int(prey.y)), 6)
-                #draw_agent_direction(screen, prey, (0, 255, 255))  # Dodaj rysowanie kierunku
+                # draw_field_of_view(screen, prey, (0, 255, 255))  # <--- ZAKOMENTUJ TĘ LINIĘ ABY WYŁĄCZYĆ STOŻEK PREY
+                if result == "reproduce":
+                    import copy
+                    new_genome = copy.deepcopy(prey.genome)
+                    new_genome.mutate(config_prey.genome_config)
+                    new_net = neat.nn.FeedForwardNetwork.create(new_genome, config_prey)
+                    # Tworzenie nowego osobnika obok rodzica
+                    offset = random.uniform(-10, 10)
+                    child = Prey(new_genome, new_net)
+                    child.x = min(max(prey.x + offset, 0), WIDTH)
+                    child.y = min(max(prey.y + offset, 0), HEIGHT)
+                    child.direction = random.uniform(0, 360)
+                    new_preys.append(child)
+        preys.extend(new_preys)
 
         # UPDATE i RYSOWANIE PREDATORÓW
+        new_predators = []
         for predator in predators:
             if predator.alive:
-                predator.update(preys)
+                result = predator.update(preys)
                 pygame.draw.circle(screen, (255, 0, 0), (int(predator.x), int(predator.y)), 8)
-                #draw_agent_direction(screen, predator, (255, 255, 0))  # Dodaj rysowanie kierunku
+                # draw_field_of_view(screen, predator, (255, 255, 0))  # <--- ZAKOMENTUJ TĘ LINIĘ ABY WYŁĄCZYĆ STOŻEK PREDATOR
+                if result == "reproduce" and len(predators) + len(new_predators) < MAX_PREDATORS:
+                    import copy
+                    new_genome = copy.deepcopy(predator.genome)
+                    new_genome.mutate(config_predator.genome_config)
+                    new_net = neat.nn.FeedForwardNetwork.create(new_genome, config_predator)
+                    # Tworzenie nowego osobnika obok rodzica
+                    offset = random.uniform(-10, 10)
+                    child = Predator(new_genome, new_net)
+                    child.x = min(max(predator.x + offset, 0), WIDTH)
+                    child.y = min(max(predator.y + offset, 0), HEIGHT)
+                    child.direction = random.uniform(0, 360)
+                    new_predators.append(child)
+        predators.extend(new_predators)
 
         # Usuwanie martwych agentów i zjedzonych jedzenia
         preys = [p for p in preys if p.alive]
@@ -162,7 +185,7 @@ def run_live_training(config_prey, config_predator, generations=30):
         foods = [f for f in foods if f.alive]
 
         # Dorysowanie jedzenia jeśli za mało
-        if len(foods) < 30:
+        if len(foods) < 60:
             foods.append(Food(WIDTH, HEIGHT))  # Pass dimensions to Food
 
         # Draw food count
@@ -182,13 +205,7 @@ def run_live_training(config_prey, config_predator, generations=30):
 
         # Koniec generacji
         if step >= NUM_STEPS_PER_GEN:
-            # Zapisz końcową populację dla wykresu
-            population_data["preys"].append(len(preys))
-            population_data["predators"].append(len(predators))            
-            population_data["predators"].append(len(predators))
-            update_population_chart()  # Aktualizuj wykres tylko przy przejściu do nowej generacjit()  # Aktualizuj wykres tylko przy przejściu do nowej generacji
-
-            # Fitness za przeżycieycie
+            # Fitness za przeżycie
             for prey in preys:
                 if prey.alive:
                     prey.genome.fitness += 10
@@ -198,37 +215,90 @@ def run_live_training(config_prey, config_predator, generations=30):
 
             # Ewolucja NEAT
             pop_prey.reporters.start_generation(gen)
-            pop_prey.population = pop_prey.reproduction.reproduce(pop_prey.config, pop_prey.species, pop_prey.config.pop_size, gen) 
+            
+            # Sprawdź czy populacja i species mają osobników
+            population_empty = not pop_prey.population or all(len(s.members) == 0 for s in pop_prey.species.species.values())
+            if population_empty:
+                print("Prey population or all species extinct! Rescuing best genome from previous generation.")
+                if all_preys and len(all_preys) > 0:
+                    best_prey = max(all_preys, key=lambda p: p.genome.fitness)
+                    best_genome = best_prey.genome
+                    pop_prey = neat.Population(config_prey)
+                    for gid, genome in pop_prey.population.items():
+                        genome.connections = best_genome.connections.copy()
+                        genome.nodes = best_genome.nodes.copy()
+                        genome.fitness = 0
+                else:
+                    print("Brak osobników do uratowania, restart populacji.")
+                    pop_prey = neat.Population(config_prey)
+            else:
+                pop_prey.population = pop_prey.reproduction.reproduce(
+                    pop_prey.config, pop_prey.species, pop_prey.config.pop_size, gen
+                )
             prey_genomes = list(pop_prey.population.items())   
             preys = init_agents(prey_genomes, config_prey, Prey, MAX_PREY)
 
             pop_predator.reporters.start_generation(gen)
             print(f"Predator population size: {config_predator.pop_size}")  # Debugging log
-            pop_predator.population = pop_predator.reproduction.reproduce(pop_predator.config, pop_predator.species, pop_predator.config.pop_size, gen) 
-            pop_predator.species.speciate(pop_predator.config, pop_predator.population, gen)
+            # --- ELITISM: rescue best genome if extinct ---
+            if not pop_predator.population:
+                print("Predator population extinct! Rescuing best genome from previous generation.")
+                if all_predators and len(all_predators) > 0:
+                    best_pred = max(all_predators, key=lambda p: p.genome.fitness)
+                    best_genome = best_pred.genome
+                    pop_predator = neat.Population(config_predator)
+                    for gid, genome in pop_predator.population.items():
+                        genome.connections = best_genome.connections.copy()
+                        genome.nodes = best_genome.nodes.copy()
+                        genome.fitness = 0
+                else:
+                    pop_predator = neat.Population(config_predator)
+            else:
+                pop_predator.population = pop_predator.reproduction.reproduce(
+                    pop_predator.config, pop_predator.species, pop_predator.config.pop_size, gen
+                )
+                pop_predator.species.speciate(pop_predator.config, pop_predator.population, gen)
             predator_genomes = list(pop_predator.population.items())   
             predators = init_agents(predator_genomes, config_predator, Predator, MAX_PREDATORS)
 
-            # Reset jedzenia, kroków i licznikówjedzenia, kroków i liczników
-            foods = [Food(WIDTH, HEIGHT) for _ in range(80)]  # Ensure each generation starts with 80 food items[Food(WIDTH, HEIGHT) for _ in range(80)]  # Ensure each generation starts with 80 food items
+            # Reset jedzenia, kroków i liczników
+            foods = [Food(WIDTH, HEIGHT) for _ in range(80)]
             step = 0
             gen += 1            
             print(f"Generacja {gen} zakończona.")
+
+            # --- ZAPAMIĘTAJ CAŁĄ GENERACJĘ NA NOWO ---
+            all_preys = preys[:]
+            all_predators = predators[:]
 
     plt.ioff()  # Disable interactive mode Disable interactive mode
     plt.show()  # Show the final plot    plt.show()  # Show the final plot
     pygame.quit()  
 
-
-def draw_agent_direction(screen, agent, color):
-    # Draw a line indicating the agent's direction direction
-    rad = math.radians(agent.direction)
-    end_x = agent.x + math.cos(rad) * 20
-    end_y = agent.y + math.sin(rad) * 20   
-    pygame.draw.line(screen, color, (agent.x, agent.y), (end_x, end_y), 2)
-
 def draw_field_of_view(screen, agent, color):
-    pass  # Do not draw the view angle or cone
+    # Rysuj pole widzenia jako wycinek koła (łuk) zarówno dla predatorów jak i prey
+    if not hasattr(agent, "VIEW_ANGLE"):
+        return
+    fov = getattr(agent, "VIEW_ANGLE", 360)
+    length = 80  # długość promienia widzenia (możesz zmienić)
+    center = (int(agent.x), int(agent.y))
+    left_angle = agent.direction - fov / 2
+    right_angle = agent.direction + fov / 2
+
+    # Punkty na łuku
+    arc_points = []
+    num_arc_points = 16  # im więcej, tym gładszy łuk
+    for i in range(num_arc_points + 1):
+        angle = math.radians(left_angle + i * (fov / num_arc_points))
+        x = int(agent.x + math.cos(angle) * length)
+        y = int(agent.y + math.sin(angle) * length)
+        arc_points.append((x, y))
+
+    # Rysuj linie od środka do końców łuku
+    pygame.draw.line(screen, color, center, arc_points[0], 1)
+    pygame.draw.line(screen, color, center, arc_points[-1], 1)
+    # Rysuj łuk (po okręgu)
+    pygame.draw.lines(screen, color, False, arc_points, 1)
 
 def draw_food_count(screen, foods, preys, predators):
     # Display the count of food, preys, and predators
@@ -256,8 +326,6 @@ def start_simulation():
     )
 
     run_live_training(config_prey, config_predator, generations=30)  
-
-
 
 
 if __name__ == "__main__":

@@ -1,17 +1,30 @@
-from shared import Agent, MAX_HUNGER, MAX_SPEED
+from shared import Agent, MAX_STAMINA, MAX_SPEED
 import math
 
 class Prey(Agent):
+    VIEW_ANGLE = 180  # pole widzenia dla Prey (możesz zmieniać w przyszłości)
+
+    def __init__(self, genome, net):
+        super().__init__(genome, net)
+        self.reproduction_cooldown = 0
+        self.eat_cooldown = 0  # cooldown na jedzenie
+
     def update(self, foods, predators):
         if not self.alive:
             return
 
-        visible = foods + predators
-        inputs = self.get_inputs(visible)
-        output = self.net.activate(inputs)
+        if self.reproduction_cooldown > 0:
+            self.reproduction_cooldown -= 1
+        if self.eat_cooldown > 0:
+            self.eat_cooldown -= 1
 
-        turn = (output[0] * 2 - 1) * 15
-        speed = output[1] * MAX_SPEED
+        inputs = self.get_inputs(foods + predators)
+        output = self.net.activate(inputs)
+        # --- OUTPUT sieci: output[0] = turn (-1..1), output[1] = speed (0..1) ---
+        # output[0]: zmiana kierunku patrzenia (turn)
+        # output[1]: prędkość ruchu (speed)
+        turn = (output[0] * 2 - 1) * 5
+        speed = max(output[1] * MAX_SPEED, 0)
 
         self.direction = (self.direction + turn) % 360
         self.speed = speed
@@ -22,15 +35,18 @@ class Prey(Agent):
         distance_moved = math.hypot(self.x - prev_x, self.y - prev_y)
         self.genome.fitness += distance_moved * 0.01  # Small reward for movement
 
-        self.decrease_hunger()
-
-        # Check for reproduction
-        if self.hunger > 90:  # Hunger threshold for reproduction
-            self.genome.fitness += 20  # Reward for reproduction
-            self.hunger = MAX_HUNGER * 0.8  # Set hunger to 80% after reproduction
+        self.decrease_stamina()
 
         for food in foods:
-            if food.alive and math.hypot(food.x - self.x, food.y - self.y) < 10:
-                self.hunger = min(MAX_HUNGER, self.hunger + 30)
+            if self.eat_cooldown == 0 and food.alive and math.hypot(food.x - self.x, food.y - self.y) < 10:
+                self.stamina = min(MAX_STAMINA, self.stamina + 30)
                 food.alive = False
+                self.eat_cooldown = 5  # blokada na 5 ticków
                 break
+
+        # Check for reproduction (po zjedzeniu!)
+        if self.stamina > 90 and self.reproduction_cooldown == 0:
+            self.genome.fitness += 20  # Reward for reproduction
+            self.stamina -= 40  # Set stamina to 80% after reproduction
+            self.reproduction_cooldown = 30
+            return "reproduce"

@@ -1,16 +1,30 @@
-from shared import Agent, MAX_HUNGER, MAX_SPEED
+from shared import Agent, MAX_STAMINA, MAX_SPEED
 import math
 
 class Predator(Agent):
+    VIEW_ANGLE = 60  # pole widzenia dla Predator (możesz zmieniać w przyszłości)
+
+    def __init__(self, genome, net):
+        super().__init__(genome, net)
+        self.reproduction_cooldown = 0
+
     def update(self, preys):
         if not self.alive:
             return
 
+        if self.reproduction_cooldown > 0:
+            self.reproduction_cooldown -= 1
+
         inputs = self.get_inputs(preys)
         output = self.net.activate(inputs)
-
-        turn = (output[0] * 2 - 1) * 20
-        speed = output[1] * MAX_SPEED
+        # --- OUTPUT sieci: output[0] = turn (-1..1), output[1] = speed (0..1) ---
+        # output[0]: zmiana kierunku patrzenia (turn)
+        # output[1]: prędkość ruchu (speed)
+        # output[0] jest w zakresie [0, 1] (wyjście sieci)
+        # (output[0] * 2 - 1) przekształca zakres [0, 1] na [-1, 1]
+        # potem mnożymy przez 5, więc turn jest w zakresie [-5, 5] stopni
+        turn = (output[0] * 2 - 1) * 5
+        speed = max(output[1] * MAX_SPEED, 0)
 
         self.direction = (self.direction + turn) % 360
         self.speed = speed
@@ -21,16 +35,18 @@ class Predator(Agent):
         distance_moved = math.hypot(self.x - prev_x, self.y - prev_y)
         self.genome.fitness += distance_moved * 0.01  # Small reward for movement
 
-        self.decrease_hunger()
+        self.decrease_stamina()
 
         # Check for reproduction
-        if self.hunger > 90:  # Hunger threshold for reproduction
+        if self.stamina > 90 and self.reproduction_cooldown == 0:
             self.genome.fitness += 20  # Reward for reproduction
-            self.hunger = MAX_HUNGER * 0.8  # Set hunger to 80% after reproduction
+            self.stamina = MAX_STAMINA * 0.8  
+            self.reproduction_cooldown = 30
+            return "reproduce"
 
         for prey in preys:
             if prey.alive and math.hypot(prey.x - self.x, prey.y - self.y) < 15:
                 prey.alive = False
-                self.hunger = min(MAX_HUNGER, self.hunger + 50)
+                self.stamina = min(MAX_STAMINA, self.stamina + 50)
                 self.genome.fitness += 50
                 break
