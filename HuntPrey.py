@@ -3,7 +3,7 @@ import neat
 import sys
 import random
 import math
-from shared import WIDTH, HEIGHT
+from shared import WIDTH, HEIGHT, MAX_STAMINA
 from food import Food
 from prey import Prey
 from predator import Predator
@@ -49,8 +49,15 @@ def run_live_training(config_prey, config_predator, generations=60):
     prey_genomes = list(pop_prey.population.items())
     predator_genomes = list(pop_predator.population.items())
 
-    preys = init_agents(prey_genomes, config_prey, Prey, MAX_PREY)
-    predators = init_agents(predator_genomes, config_predator, Predator, MAX_PREDATORS)
+    # Użyj liczebności z configów NEAT
+    preys = init_agents(prey_genomes, config_prey, Prey, config_prey.pop_size)
+    predators = init_agents(predator_genomes, config_predator, Predator, config_predator.pop_size)
+
+    # Ustaw stamina na 90% na początku generacji
+    for prey in preys:
+        prey.stamina = MAX_STAMINA * 0.9
+    for predator in predators:
+        predator.stamina = MAX_STAMINA * 0.9
 
     foods = [Food(WIDTH, HEIGHT) for _ in range(250)]  # Więcej jedzenia na start
 
@@ -101,6 +108,7 @@ def run_live_training(config_prey, config_predator, generations=60):
                         child.x = min(max(prey.x + offset, 0), WIDTH)
                         child.y = min(max(prey.y + offset, 0), HEIGHT)
                         child.direction = random.uniform(0, 360)
+                        child.stamina = MAX_STAMINA * 0.9  # Ustaw stamina dziecka na 90%
                         new_preys.append(child)
             preys.extend(new_preys)
 
@@ -111,6 +119,7 @@ def run_live_training(config_prey, config_predator, generations=60):
                     result = predator.update(preys)
                     pygame.draw.circle(screen, (255, 0, 0), (int(predator.x), int(predator.y)), 7)
                     # draw_field_of_view(screen, predator, (255, 255, 0))
+                    predator.draw_hunger_bar(screen)
                     if result == "reproduce" and len(predators) + len(new_predators) < MAX_PREDATORS:
                         import copy
                         new_genome = copy.deepcopy(predator.genome)
@@ -121,10 +130,19 @@ def run_live_training(config_prey, config_predator, generations=60):
                         child.x = min(max(predator.x + offset, 0), WIDTH)
                         child.y = min(max(predator.y + offset, 0), HEIGHT)
                         child.direction = random.uniform(0, 360)
+                        child.stamina = MAX_STAMINA * 0.9  # Ustaw stamina dziecka na 90%
                         new_predators.append(child)
             predators.extend(new_predators)
 
             # Usuwanie martwych agentów i zjedzonych jedzenia
+            # Odejmij fitness za śmierć
+            for prey in preys:
+                if not prey.alive:
+                    prey.genome.fitness -= 20
+            for predator in predators:
+                if not predator.alive:
+                    predator.genome.fitness -= 20
+
             preys = [p for p in preys if p.alive]
             predators = [p for p in predators if p.alive]
             foods = [f for f in foods if f.alive]
@@ -191,7 +209,10 @@ def run_live_training(config_prey, config_predator, generations=60):
                         pop_prey.config, pop_prey.species, pop_prey.config.pop_size, gen
                     )
                 prey_genomes = list(pop_prey.population.items())   
-                preys = init_agents(prey_genomes, config_prey, Prey, MAX_PREY)
+                preys = init_agents(prey_genomes, config_prey, Prey, config_prey.pop_size)
+                # Ustaw stamina na 90% po nowej generacji
+                for prey in preys:
+                    prey.stamina = MAX_STAMINA * 0.9
 
                 pop_predator.reporters.start_generation(gen)
                 print(f"Predator population size: {config_predator.pop_size}")
@@ -207,13 +228,22 @@ def run_live_training(config_prey, config_predator, generations=60):
                             genome.fitness = 0
                     else:
                         pop_predator = neat.Population(config_predator)
+                        for gid, genome in pop_predator.population.items():
+                            genome.fitness = 0  # <-- DODAJ TO!
                 else:
                     pop_predator.population = pop_predator.reproduction.reproduce(
                         pop_predator.config, pop_predator.species, pop_predator.config.pop_size, gen
                     )
+                    # UPEWNIJ SIĘ, ŻE KAŻDY GENOM MA FITNESS
+                    for genome in pop_predator.population.values():
+                        if genome.fitness is None:
+                            genome.fitness = 0
                     pop_predator.species.speciate(pop_predator.config, pop_predator.population, gen)
                 predator_genomes = list(pop_predator.population.items())   
-                predators = init_agents(predator_genomes, config_predator, Predator, MAX_PREDATORS)
+                predators = init_agents(predator_genomes, config_predator, Predator, config_predator.pop_size)
+                # Ustaw stamina na 90% po nowej generacji
+                for predator in predators:
+                    predator.stamina = MAX_STAMINA * 0.9
 
                 # Reset jedzenia, kroków i liczników
                 foods = [Food(WIDTH, HEIGHT) for _ in range(250)]

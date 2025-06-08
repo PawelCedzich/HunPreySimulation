@@ -35,7 +35,7 @@ class Agent:
         self.y = max(0, min(HEIGHT, self.y))
 
     def decrease_stamina(self):
-        self.stamina -= 0.01 + 0.025 * abs(self.speed)
+        self.stamina -= 0.3 - (0.025 * abs(self.speed))
         if self.stamina > MAX_STAMINA:
             self.stamina = MAX_STAMINA
         if self.stamina <= 0:

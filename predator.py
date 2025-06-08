@@ -22,23 +22,16 @@ class Predator(Agent):
 
         inputs = self.get_inputs(preys)
         output = self.net.activate(inputs)
-        # --- OUTPUT sieci: output[0] = turn (-1..1), output[1] = speed (0..1) ---
-        # output[0]: zmiana kierunku patrzenia (turn)
-        # output[1]: prędkość ruchu (speed)
-        # output[0] jest w zakresie [0, 1] (wyjście sieci)
-        # (output[0] * 2 - 1) przekształca zakres [0, 1] na [-1, 1]
-        # potem mnożymy przez 5, więc turn jest w zakresie [-5, 5] stopni
+
         turn = (output[0] * 2 - 1) * 5
         speed = max(output[1] * MAX_SPEED, 0)
 
         self.direction = (self.direction + turn) % 360
         self.speed = speed
 
-        # Calculate movement distance for fitness reward
-        prev_x, prev_y = self.x, self.y
         self.move()
-        distance_moved = math.hypot(self.x - prev_x, self.y - prev_y)
-        self.genome.fitness += distance_moved * 0.001  # Small reward for movement
+        # Calculate movement distance for fitness reward
+        self.genome.fitness += self.speed * 0.01  # Small reward for movement
 
         self.decrease_stamina()
 
@@ -46,17 +39,43 @@ class Predator(Agent):
         if self.stamina > 90 and self.reproduction_cooldown == 0:
             self.genome.fitness += 20  # Reward for reproduction
             self.stamina -= 40
-            self.reproduction_cooldown = 30
+            self.reproduction_cooldown = 40
             return "reproduce"
 
         for prey in preys:
+            # jezeli się spełni zjada
             if (
                 self.eat_cooldown == 0
                 and prey.alive
                 and math.hypot(prey.x - self.x, prey.y - self.y) < 15
             ):
                 prey.alive = False
-                self.stamina = min(MAX_STAMINA, self.stamina + 35)
+                self.stamina = min(MAX_STAMINA, self.stamina + 50)
                 self.genome.fitness += 20
-                self.eat_cooldown = 5  # blokada na 5 ticków
+                self.eat_cooldown = 20  # blokada na 20 ticków
                 break
+
+    def draw_hunger_bar(self, screen):
+        """
+        Rysuje pasek głodu (staminy) nad predatorem.
+        """
+        import pygame  # Upewnij się, że pygame jest zainstalowany
+
+        bar_width = 40
+        bar_height = 6
+        x = int(self.x)
+        y = int(self.y) - 25  # nad głową
+
+        # Tło paska (szare)
+        pygame.draw.rect(screen, (80, 80, 80), (x - bar_width // 2, y, bar_width, bar_height))
+        # Wypełnienie (zielone do czerwonego w zależności od staminy)
+        stamina_ratio = max(0, min(1, self.stamina / MAX_STAMINA))
+        fill_width = int(bar_width * stamina_ratio)
+        color = (
+            int(255 * (1 - stamina_ratio)),
+            int(255 * stamina_ratio),
+            0
+        )
+        pygame.draw.rect(screen, color, (x - bar_width // 2, y, fill_width, bar_height))
+        # Opcjonalnie: ramka
+        pygame.draw.rect(screen, (0, 0, 0), (x - bar_width // 2, y, bar_width, bar_height), 1)
