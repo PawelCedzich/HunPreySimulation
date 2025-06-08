@@ -5,7 +5,7 @@ import math
 WIDTH = 1700
 HEIGHT = 1000
 MAX_STAMINA = 100
-MAX_SPEED = 5
+MAX_SPEED = 3
 RAY_UPDATE_FREQ = 5
 NUM_RAYS = 8
 FIELD_OF_VIEW = 360
@@ -25,6 +25,7 @@ class Agent:
         self.inputs_cache = None  # Cache sensory data
         self.tick_since_last_ray = 0
         self.view_distance = 100  # Default view distance for agents
+        self.ticks_alive = 0  # licznik przeżytych ticków
 
     def move(self):
         # Wywołuj po apply_network_output!
@@ -48,9 +49,14 @@ class Agent:
             for i in range(NUM_RAYS):
                 ray_dir = (self.direction + i * RAY_ANGLE) % 360
                 dist, obj_type, obj_dir, obj_speed = self.cast_ray(ray_dir, objects)
+                # One-hot encoding typu obiektu
+                is_prey = 1 if obj_type == 1 else 0
+                is_predator = 1 if obj_type == 2 else 0
+                is_food = 1 if obj_type == 3 else 0
                 self.inputs_cache.append(dist / WIDTH)
-                self.inputs_cache.append(obj_type)
-                # Nowe wejścia: kierunek i prędkość obiektu (znormalizowane)
+                self.inputs_cache.append(is_prey)
+                self.inputs_cache.append(is_predator)
+                self.inputs_cache.append(is_food)
                 self.inputs_cache.append(obj_dir / 360.0)
                 self.inputs_cache.append(obj_speed / MAX_SPEED)
             # Dodatkowo własna stamina (lub hunger)

@@ -1,14 +1,14 @@
 [NEAT]
 pop_size              = 50 
 fitness_criterion     = max
-fitness_threshold     = 250.0
+fitness_threshold     = 1000.0
 reset_on_extinction   = False
 
 [DefaultGenome]
-# Wejścia: 8 sektorów × 4 (dystans, typ, kierunek, prędkość) + 1 stamina = 33
-num_inputs            = 33
+# Wejścia: 8 sektorów × 6 (dystans, is_prey, is_predator, is_food, kierunek, prędkość) + 1 stamina = 49
+num_inputs            = 49
 num_outputs           = 2
-num_hidden            = 3
+num_hidden            = 0
 initial_connection    = full
 
 activation_default    = tanh

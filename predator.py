@@ -2,58 +2,60 @@ from shared import Agent, MAX_STAMINA, MAX_SPEED
 import math
 
 class Predator(Agent):
-    VIEW_ANGLE = 120  # przykładowa wartość, możesz zmienić wg potrzeb
-    VIEW_DISTANCE = 100  # przykładowy zasięg widzenia dla Predator
+    VIEW_ANGLE = 150
+    VIEW_DISTANCE = 130
 
     def __init__(self, genome, net):
         super().__init__(genome, net)
-        self.view_distance = self.VIEW_DISTANCE  # indywidualny zasięg widzenia
+        self.view_distance = self.VIEW_DISTANCE
         self.reproduction_cooldown = 0
         self.eat_cooldown = 0  # cooldown na jedzenie
 
-    def update(self, preys):
+    def update(self, preys, predators=None):
         if not self.alive:
             return
+
+        self.ticks_alive += 1  # aktualizacja liczby przeżytych ticków
 
         if self.reproduction_cooldown > 0:
             self.reproduction_cooldown -= 1
         if self.eat_cooldown > 0:
             self.eat_cooldown -= 1
 
-        inputs = self.get_inputs(preys)
+        # Predator widzi tylko preys i innych predatorów
+        if predators is None:
+            objects = preys
+        else:
+            objects = preys + [pred for pred in predators if pred is not self]
+
+        inputs = self.get_inputs(objects)
         output = self.net.activate(inputs)
 
         turn = (output[0] * 2 - 1) * 5
-        speed = max(output[1] * MAX_SPEED, 0)
+        speed = max(output[1] * MAX_SPEED * 1.2, 0)
 
         self.direction = (self.direction + turn) % 360
         self.speed = speed
 
         self.move()
-        # Calculate movement distance for fitness reward
-        self.genome.fitness += self.speed * 0.01  # Small reward for movement
-
         self.decrease_stamina()
 
-        # Check for reproduction
-        if self.stamina > 90 and self.reproduction_cooldown == 0:
-            self.genome.fitness += 20  # Reward for reproduction
-            self.stamina -= 40
-            self.reproduction_cooldown = 40
-            return "reproduce"
-
+        # Polowanie na preya
         for prey in preys:
-            # jezeli się spełni zjada
-            if (
-                self.eat_cooldown == 0
-                and prey.alive
-                and math.hypot(prey.x - self.x, prey.y - self.y) < 15
-            ):
+            if prey.alive and math.hypot(prey.x - self.x, prey.y - self.y) < 15:
+                self.stamina = min(MAX_STAMINA, self.stamina + 40)
                 prey.alive = False
-                self.stamina = min(MAX_STAMINA, self.stamina + 50)
-                self.genome.fitness += 20
-                self.eat_cooldown = 20  # blokada na 20 ticków
+                self.eat_cooldown = 25
+                self.genome.fitness += 10
                 break
+
+        # Rozmnażanie
+        if self.stamina > 90 and self.reproduction_cooldown == 0:
+            self.genome.fitness += 10
+            self.stamina -= 40
+            self.eat_cooldown = 35
+            self.reproduction_cooldown = 50
+            return "reproduce"
 
     def draw_hunger_bar(self, screen):
         """

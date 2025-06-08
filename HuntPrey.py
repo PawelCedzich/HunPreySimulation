@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import csv
 
 # Parametry
-FPS = 120
+FPS = 200
 NUM_STEPS_PER_GEN = 1000  # Zwiększ liczbę kroków na generację
 
 MAX_PREY = 150
@@ -53,13 +53,19 @@ def run_live_training(config_prey, config_predator, generations=60):
     preys = init_agents(prey_genomes, config_prey, Prey, config_prey.pop_size)
     predators = init_agents(predator_genomes, config_predator, Predator, config_predator.pop_size)
 
+    # Dodaj licznik przeżytych ticków
+    for prey in preys:
+        prey.ticks_alive = 0
+    for predator in predators:
+        predator.ticks_alive = 0
+
     # Ustaw stamina na 90% na początku generacji
     for prey in preys:
-        prey.stamina = MAX_STAMINA * 0.9
+        prey.stamina = MAX_STAMINA * 0.5
     for predator in predators:
-        predator.stamina = MAX_STAMINA * 0.9
+        predator.stamina = MAX_STAMINA * 0.5
 
-    foods = [Food(WIDTH, HEIGHT) for _ in range(250)]  # Więcej jedzenia na start
+    foods = [Food(WIDTH, HEIGHT) for _ in range(300)]  # Więcej jedzenia na start
 
     # --- ZAPAMIĘTAJ CAŁĄ GENERACJĘ NA START ---
     all_preys = preys[:]
@@ -98,6 +104,7 @@ def run_live_training(config_prey, config_predator, generations=60):
                     result = prey.update(foods, predators)
                     pygame.draw.circle(screen, (0, 0, 255), (int(prey.x), int(prey.y)), 7)
                     # draw_field_of_view(screen, prey, (0, 255, 255))
+                    # prey.draw_hunger_bar(screen)  # <--- DODAJ TO WYWOŁANIE
                     if result == "reproduce":
                         import copy
                         new_genome = copy.deepcopy(prey.genome)
@@ -108,7 +115,7 @@ def run_live_training(config_prey, config_predator, generations=60):
                         child.x = min(max(prey.x + offset, 0), WIDTH)
                         child.y = min(max(prey.y + offset, 0), HEIGHT)
                         child.direction = random.uniform(0, 360)
-                        child.stamina = MAX_STAMINA * 0.9  # Ustaw stamina dziecka na 90%
+                        child.stamina = MAX_STAMINA * 0.5  # Ustaw stamina dziecka na 90%
                         new_preys.append(child)
             preys.extend(new_preys)
 
@@ -116,10 +123,11 @@ def run_live_training(config_prey, config_predator, generations=60):
             new_predators = []
             for predator in predators:
                 if predator.alive:
-                    result = predator.update(preys)
+                    # Przekazuj zarówno preys jak i predators do update
+                    result = predator.update(preys, predators)
                     pygame.draw.circle(screen, (255, 0, 0), (int(predator.x), int(predator.y)), 7)
                     # draw_field_of_view(screen, predator, (255, 255, 0))
-                    predator.draw_hunger_bar(screen)
+                    # predator.draw_hunger_bar(screen)
                     if result == "reproduce" and len(predators) + len(new_predators) < MAX_PREDATORS:
                         import copy
                         new_genome = copy.deepcopy(predator.genome)
@@ -130,7 +138,7 @@ def run_live_training(config_prey, config_predator, generations=60):
                         child.x = min(max(predator.x + offset, 0), WIDTH)
                         child.y = min(max(predator.y + offset, 0), HEIGHT)
                         child.direction = random.uniform(0, 360)
-                        child.stamina = MAX_STAMINA * 0.9  # Ustaw stamina dziecka na 90%
+                        child.stamina = MAX_STAMINA * 0.5  # Ustaw stamina dziecka na 90%
                         new_predators.append(child)
             predators.extend(new_predators)
 
@@ -152,7 +160,7 @@ def run_live_training(config_prey, config_predator, generations=60):
             max_predators_this_gen = max(max_predators_this_gen, len(predators))
 
             # Dorysowanie jedzenia jeśli za mało
-            if len(foods) < 240:
+            if len(foods) < 290:
                 foods.append(Food(WIDTH, HEIGHT))
 
             # Draw food count
@@ -168,7 +176,10 @@ def run_live_training(config_prey, config_predator, generations=60):
                 alive_preys = sum(prey.alive for prey in preys)
                 alive_predators = sum(predator.alive for predator in predators)
                 alive_foods = sum(food.alive for food in foods)
-                print(f"Tick {step} Gen {gen} - Preys: {alive_preys}, Predators: {alive_predators}, Food: {alive_foods}")
+                # Średni czas przeżycia dla wszystkich osobników generacji
+                avg_prey_life = (sum(p.ticks_alive for p in all_preys) / len(all_preys)) if all_preys else 0
+                avg_pred_life = (sum(p.ticks_alive for p in all_predators) / len(all_predators)) if all_predators else 0
+                print(f"Tick {step} Gen {gen} - Preys: {alive_preys}, Predators: {alive_predators}, Food: {alive_foods} | AvgPreyLife: {avg_prey_life:.1f} | AvgPredLife: {avg_pred_life:.1f}")
                 # --- ZAPIS DO CSV ---
                 csv_writer.writerow([
                     gen, step, alive_preys, alive_predators, alive_foods,
@@ -181,10 +192,10 @@ def run_live_training(config_prey, config_predator, generations=60):
                 # Fitness za przeżycie
                 for prey in preys:
                     if prey.alive:
-                        prey.genome.fitness += 10
+                        prey.genome.fitness += 20
                 for predator in predators:
                     if predator.alive:      
-                        predator.genome.fitness += 10
+                        predator.genome.fitness += 20
 
                 # Ewolucja NEAT
                 pop_prey.reporters.start_generation(gen)
@@ -212,7 +223,7 @@ def run_live_training(config_prey, config_predator, generations=60):
                 preys = init_agents(prey_genomes, config_prey, Prey, config_prey.pop_size)
                 # Ustaw stamina na 90% po nowej generacji
                 for prey in preys:
-                    prey.stamina = MAX_STAMINA * 0.9
+                    prey.stamina = MAX_STAMINA * 0.5
 
                 pop_predator.reporters.start_generation(gen)
                 print(f"Predator population size: {config_predator.pop_size}")
@@ -243,10 +254,10 @@ def run_live_training(config_prey, config_predator, generations=60):
                 predators = init_agents(predator_genomes, config_predator, Predator, config_predator.pop_size)
                 # Ustaw stamina na 90% po nowej generacji
                 for predator in predators:
-                    predator.stamina = MAX_STAMINA * 0.9
+                    predator.stamina = MAX_STAMINA * 0.5
 
                 # Reset jedzenia, kroków i liczników
-                foods = [Food(WIDTH, HEIGHT) for _ in range(250)]
+                foods = [Food(WIDTH, HEIGHT) for _ in range(300)]
                 step = 0
                 gen += 1
                 # --- ZAPIS DO CSV NA KONIEC GENERACJI ---
@@ -266,6 +277,12 @@ def run_live_training(config_prey, config_predator, generations=60):
                 # --- ZAPAMIĘTAJ CAŁĄ GENERACJĘ NA NOWO ---
                 all_preys = preys[:]
                 all_predators = predators[:]
+
+                # Reset liczników przeżycia dla nowej generacji
+                for prey in preys:
+                    prey.ticks_alive = 0
+                for predator in predators:
+                    predator.ticks_alive = 0
 
     plt.ioff()
     plt.show()
@@ -300,6 +317,16 @@ def draw_food_count(screen, foods, preys, predators, gen=None, step=None):
     # Display the count of food, preys, predators, generation and ticks
     font = pygame.font.SysFont(None, 24)
     text = f"Food: {len(foods)} | Preys: {len(preys)} | Predators: {len(predators)}"
+    # Dodaj najlepszy fitness dla prey i predatorów
+    if preys:
+        best_prey_fitness = max(p.genome.fitness for p in preys)
+    else:
+        best_prey_fitness = 0
+    if predators:
+        best_predator_fitness = max(p.genome.fitness for p in predators)
+    else:
+        best_predator_fitness = 0
+    text += f" | BestPreyFit: {best_prey_fitness:.1f} | BestPredFit: {best_predator_fitness:.1f}"
     if gen is not None and step is not None:
         text += f" | Gen: {gen} | Tick: {step}"
     rendered = font.render(text, True, (255, 255, 255))
