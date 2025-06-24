@@ -2,27 +2,26 @@ from shared import Agent, MAX_STAMINA, MAX_SPEED
 import math
 
 class Predator(Agent):
-    VIEW_ANGLE = 150
-    VIEW_DISTANCE = 130
+    VIEW_ANGLE = 180    
+    VIEW_DISTANCE = 100
 
     def __init__(self, genome, net):
         super().__init__(genome, net)
         self.view_distance = self.VIEW_DISTANCE
         self.reproduction_cooldown = 0
-        self.eat_cooldown = 0  # cooldown na jedzenie
+        self.eat_cooldown = 0  
 
     def update(self, preys, predators=None):
         if not self.alive:
             return
 
-        self.ticks_alive += 1  # aktualizacja liczby przeżytych ticków
+        self.ticks_alive += 1 
 
         if self.reproduction_cooldown > 0:
             self.reproduction_cooldown -= 1
         if self.eat_cooldown > 0:
             self.eat_cooldown -= 1
 
-        # Predator widzi tylko preys i innych predatorów
         if predators is None:
             objects = preys
         else:
@@ -40,7 +39,7 @@ class Predator(Agent):
         self.move()
         self.decrease_stamina()
 
-        # Polowanie na preya
+        # Polowanie na prey
         for prey in preys:
             if prey.alive and math.hypot(prey.x - self.x, prey.y - self.y) < 15:
                 self.stamina = min(MAX_STAMINA, self.stamina + 40)

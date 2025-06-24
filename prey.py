@@ -2,8 +2,8 @@ from shared import Agent, MAX_STAMINA, MAX_SPEED
 import math
 
 class Prey(Agent):
-    VIEW_ANGLE = 150  # pole widzenia dla Prey (zmienione z 180 na 235)
-    VIEW_DISTANCE = 130  # zasięg widzenia dla Prey
+    VIEW_ANGLE = 180  # pole widzenia dla Prey (zmienione z 180 na 235)
+    VIEW_DISTANCE = 100  # zasięg widzenia dla Prey
 
     def __init__(self, genome, net):
         super().__init__(genome, net)
@@ -15,14 +15,13 @@ class Prey(Agent):
         if not self.alive:
             return
 
-        self.ticks_alive += 1  # aktualizacja liczby przeżytych ticków
+        self.ticks_alive += 1  
 
         if self.reproduction_cooldown > 0:
             self.reproduction_cooldown -= 1
         if self.eat_cooldown > 0:
             self.eat_cooldown -= 1
 
-        # Przekazuj wszystkie obiekty do raycastingu: jedzenie, inne preys, predatory
         if preys is None:
             objects = foods + predators
         else:
@@ -32,15 +31,12 @@ class Prey(Agent):
         output = self.net.activate(inputs)
 
         turn = (output[0] * 2 - 1) * 5
-        #self.genome.fitness -= abs(turn) * 0.05  # Kara za skręt
-        speed = max(output[1] * MAX_SPEED * 1.2, 0) 
+        speed = max(output[1] * MAX_SPEED * 1.2, 0)
 
         self.direction = (self.direction + turn) % 360
         self.speed = speed
 
-        # Calculate movement distance for fitness reward
         self.move()
-        #self.genome.fitness += self.speed * 0.05  # Small reward for movement
 
         self.decrease_stamina()
 
@@ -48,14 +44,13 @@ class Prey(Agent):
             if self.eat_cooldown == 0 and food.alive and math.hypot(food.x - self.x, food.y - self.y) < 15:
                 self.stamina = min(MAX_STAMINA, self.stamina + 30)
                 food.alive = False
-                self.eat_cooldown = 25  # blokada na 10 ticków
-                self.genome.fitness += 5  # Nagroda za zjedzenie jedzenia
+                self.eat_cooldown = 25  
+                self.genome.fitness += 10  
                 break
 
-        # Check for reproduction (po zjedzeniu!)
         if self.stamina > 90 and self.reproduction_cooldown == 0:
-            self.genome.fitness += 10  # Reward for reproduction
-            self.stamina -= 40  # Set stamina to 80% after reproduction
+            self.genome.fitness += 10
+            self.stamina -= 40  
             self.reproduction_cooldown = 50
             return "reproduce"
 

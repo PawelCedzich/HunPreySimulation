@@ -28,7 +28,6 @@ class Agent:
         self.ticks_alive = 0  # licznik przeżytych ticków
 
     def move(self):
-        # Wywołuj po apply_network_output!
         rad = math.radians(self.direction)
         self.x += math.cos(rad) * self.speed
         self.y += math.sin(rad) * self.speed
@@ -36,20 +35,22 @@ class Agent:
         self.y = max(0, min(HEIGHT, self.y))
 
     def decrease_stamina(self):
-        self.stamina -= 0.3 - (0.025 * abs(self.speed))
+        self.stamina -= 0.2 - (0.025 * abs(self.speed))
         if self.stamina > MAX_STAMINA:
             self.stamina = MAX_STAMINA
         if self.stamina <= 0:
             self.alive = False
 
     def get_inputs(self, objects):
-        # Update sensory data only every RAY_UPDATE_FREQ steps
+        num_rays = NUM_RAYS
+        view_angle = getattr(self, "VIEW_ANGLE", 180)
+        view_distance = getattr(self, "view_distance", 200)
+        ray_angle = view_angle / num_rays
         if self.tick_since_last_ray >= RAY_UPDATE_FREQ or self.inputs_cache is None:
             self.inputs_cache = []
-            for i in range(NUM_RAYS):
-                ray_dir = (self.direction + i * RAY_ANGLE) % 360
-                dist, obj_type, obj_dir, obj_speed = self.cast_ray(ray_dir, objects)
-                # One-hot encoding typu obiektu
+            for i in range(num_rays):
+                ray_dir = (self.direction - view_angle/2 + i * ray_angle) % 360
+                dist, obj_type, obj_dir, obj_speed = self.cast_ray(ray_dir, objects, view_distance)
                 is_prey = 1 if obj_type == 1 else 0
                 is_predator = 1 if obj_type == 2 else 0
                 is_food = 1 if obj_type == 3 else 0
@@ -59,7 +60,6 @@ class Agent:
                 self.inputs_cache.append(is_food)
                 self.inputs_cache.append(obj_dir / 360.0)
                 self.inputs_cache.append(obj_speed / MAX_SPEED)
-            # Dodatkowo własna stamina (lub hunger)
             self.inputs_cache.append(self.stamina / MAX_STAMINA)
             self.tick_since_last_ray = 0
         else:
@@ -67,8 +67,8 @@ class Agent:
 
         return self.inputs_cache
 
-    def cast_ray(self, ray_dir, objects):
-        min_dist = WIDTH
+    def cast_ray(self, ray_dir, objects, max_distance):
+        min_dist = max_distance
         obj_type = 0
         obj_dir = 0.0
         obj_speed = 0.0
@@ -82,6 +82,8 @@ class Agent:
             angle_diff = abs((ray_dir - angle_to_obj + 180) % 360 - 180)
             if angle_diff < RAY_ANGLE / 2:
                 dist = math.hypot(dx, dy)
+                if dist > max_distance:
+                    continue
                 if dist < min_dist:
                     min_dist = dist
                     # Typ obiektu: 1 = Prey, 2 = Predator, 3 = Food, 0 = brak
@@ -102,7 +104,6 @@ class Agent:
         output[0]: zmiana kierunku patrzenia (turn), zakres [-1, 1]
         output[1]: prędkość (speed), zakres [0, 1]
         """
-        # Ogranicz i przeskaluj outputy
         turn = max(-1, min(1, output[0])) * MAX_TURN_ANGLE
         speed = max(0, min(1, output[1])) * MAX_SPEED
         self.direction = (self.direction + turn) % 360
